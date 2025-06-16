@@ -1,11 +1,11 @@
 """
-This script builds a Pinecone vector store from the HR Policy PDF.
-The vector store is used to find relevant HR policy information that can be used
-by the AI voice agent when answering HR-related questions.
+This script builds a Pinecone vector store from the Travel Destinations CSV.
+The vector store is used to find relevant travel destination information that can be used
+by the AI voice agent when answering travel-related questions.
 
 The script:
-1. Loads and processes the HR Policy PDF
-2. Splits content into chunks
+1. Loads and processes the Travel Destinations CSV
+2. Creates meaningful text chunks from destination data
 3. Generates embeddings using OpenAI
 4. Stores vectors in Pinecone for later retrieval
 
@@ -22,6 +22,7 @@ Environment variables required:
 import os
 import time
 import hashlib
+import csv
 from pathlib import Path
 from typing import List
 from dotenv import load_dotenv
@@ -30,13 +31,12 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 from pinecone import Pinecone
 from tqdm import tqdm
-import PyPDF2
 
 # Load environment variables from .env file
 load_dotenv()
 
 # Configuration
-PDF_PATH = "HR Policy Manual 2023 (8).pdf"
+CSV_PATH = "travel_destinations.csv"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_ENVIRONMENT = os.getenv("PINECONE_ENVIRONMENT")
@@ -55,69 +55,83 @@ assert OPENAI_API_KEY is not None
 assert PINECONE_API_KEY is not None
 assert PINECONE_INDEX_NAME is not None
 
-def extract_text_from_pdf(pdf_path: str) -> List[Document]:
-    """Extracts text from PDF and returns a list of Document objects."""
-    print(f"Extracting text from PDF: {pdf_path}")
+def load_travel_destinations_from_csv(csv_path: str) -> List[Document]:
+    """Loads travel destinations from CSV and returns a list of Document objects."""
+    print(f"Loading travel destinations from CSV: {csv_path}")
     documents = []
     
     try:
-        with open(pdf_path, 'rb') as file:
-            pdf_reader = PyPDF2.PdfReader(file)
-            total_pages = len(pdf_reader.pages)
+        with open(csv_path, 'r', encoding='utf-8') as file:
+            csv_reader = csv.DictReader(file)
             
-            for page_num in tqdm(range(total_pages), desc="Processing PDF pages"):
-                page = pdf_reader.pages[page_num]
-                text = page.extract_text()
+            for row_num, row in enumerate(csv_reader, 1):
+                # Create a comprehensive text description for each destination
+                city = row['City']
+                country = row['Country']
+                category = row['Category']
+                best_time = row['Best_Time_to_Travel']
                 
-                if text.strip():  # Only add non-empty pages
-                    documents.append(
-                        Document(
-                            page_content=text,
-                            metadata={
-                                "source": pdf_path,
-                                "page": page_num + 1,
-                                "type": "hr_policy"
-                            }
-                        )
+                # Create a rich text description that combines all information
+                content = f"""Travel Destination: {city}, {country}
+
+Categories and Attractions: {category}
+
+Best Time to Visit: {best_time}
+
+This destination offers a unique travel experience with various attractions and activities. The best time to visit is {best_time} when the weather and conditions are optimal for exploring {category}."""
+                
+                documents.append(
+                    Document(
+                        page_content=content,
+                        metadata={
+                            "source": csv_path,
+                            "row": row_num,
+                            "type": "travel_destination",
+                            "city": city,
+                            "country": country,
+                            "category": category,
+                            "best_time": best_time
+                        }
                     )
+                )
         
-        print(f"Successfully extracted text from {len(documents)} pages")
+        print(f"Successfully loaded {len(documents)} travel destinations from CSV")
         return documents
     
     except Exception as e:
-        print(f"Error processing PDF: {e}")
+        print(f"Error processing CSV: {e}")
         return []
 
-def generate_deterministic_id(source: str, text_chunk: str, page: int) -> str:
-    """Generates a deterministic ID for a text chunk based on its source, content, and page number."""
+def generate_deterministic_id(source: str, text_chunk: str, row: int) -> str:
+    """Generates a deterministic ID for a text chunk based on its source, content, and row number."""
     hasher = hashlib.md5()
     hasher.update(source.encode('utf-8'))
     hasher.update(text_chunk.encode('utf-8'))
-    hasher.update(str(page).encode('utf-8'))
+    hasher.update(str(row).encode('utf-8'))
     return hasher.hexdigest()
 
 def build_and_upsert_vector_store(clear_index_first: bool = False):
     """
-    Processes the HR Policy PDF, generates embeddings, and upserts them to Pinecone.
+    Processes the Travel Destinations CSV, generates embeddings, and upserts them to Pinecone.
     
     Args:
         clear_index_first (bool): If True, deletes all vectors from the index before upserting.
     """
-    # Extract text from PDF
-    documents = extract_text_from_pdf(PDF_PATH)
+    # Load travel destinations from CSV
+    documents = load_travel_destinations_from_csv(CSV_PATH)
     
     if not documents:
-        print("No documents were extracted from the PDF. Aborting vector store build.")
+        print("No travel destinations were loaded from the CSV. Aborting vector store build.")
         return
 
-    # Split documents into chunks
+    # Split documents into chunks (though CSV rows are already well-sized)
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,  # Smaller chunks for better context
+        chunk_size=1000,  # Good size for destination descriptions
         chunk_overlap=200,
         length_function=len,
     )
     split_docs = text_splitter.split_documents(documents)
-    print(f"Total documents split into {len(split_docs)} chunks.")
+    print(f"Total travel destinations split into {len(split_docs)} chunks.")
 
     if not split_docs:
         print("No document chunks were created. Aborting.")
@@ -147,14 +161,14 @@ def build_and_upsert_vector_store(clear_index_first: bool = False):
     # Process and upsert documents in batches
     EMBEDDING_BATCH_SIZE = 64
     total_chunks = len(split_docs)
-    print(f"Starting to process and upsert {total_chunks} chunks in batches of {EMBEDDING_BATCH_SIZE}...")
+    print(f"Starting to process and upsert {total_chunks} travel destination chunks in batches of {EMBEDDING_BATCH_SIZE}...")
 
     for i in tqdm(range(0, total_chunks, EMBEDDING_BATCH_SIZE), desc="Processing Batches"):
         batch_documents = split_docs[i : i + EMBEDDING_BATCH_SIZE]
         current_batch_num = (i // EMBEDDING_BATCH_SIZE) + 1
         total_batches = (total_chunks + EMBEDDING_BATCH_SIZE - 1) // EMBEDDING_BATCH_SIZE
         
-        print(f"  Processing batch {current_batch_num}/{total_batches} ({len(batch_documents)} documents)...")
+        print(f"  Processing batch {current_batch_num}/{total_batches} ({len(batch_documents)} destinations)...")
 
         batch_texts = [doc.page_content for doc in batch_documents]
 
@@ -169,7 +183,7 @@ def build_and_upsert_vector_store(clear_index_first: bool = False):
                     deterministic_id = generate_deterministic_id(
                         doc.metadata['source'],
                         doc.page_content,
-                        doc.metadata['page']
+                        doc.metadata['row']
                     )
                     metadata_for_pinecone = doc.metadata.copy()
                     metadata_for_pinecone['text'] = doc.page_content
@@ -193,9 +207,9 @@ def build_and_upsert_vector_store(clear_index_first: bool = False):
                 else:
                     print(f"Max retries reached for batch {current_batch_num}. Skipping this batch.")
 
-    print("All HR Policy batches processed and stored in Pinecone.")
+    print("All Travel Destination batches processed and stored in Pinecone.")
 
 if __name__ == "__main__":
-    print("Starting the process to build HR Policy vector store...")
+    print("Starting the process to build Travel Destinations vector store...")
     build_and_upsert_vector_store(clear_index_first=True)
     print("Process finished.")

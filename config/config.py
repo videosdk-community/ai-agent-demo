@@ -28,7 +28,7 @@ class Settings:
     DEFAULT_TEMPERATURE: float = 0.8
     DEFAULT_TOP_P: float = 0.8
     DEFAULT_TOP_K: int = 40
-    DEFAULT_VOICE: str = "Puck"
+    DEFAULT_VOICE: str = "Nova"
     
     # Session Configuration
     MAX_RETRY_ATTEMPTS: int = 3

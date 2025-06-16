@@ -6,6 +6,7 @@ from config import settings
 
 
 class MyVoiceAgent(Agent):
+    session: any  # type: ignore
     """Custom voice agent for handling meeting interactions."""
     
     def __init__(self, system_prompt: str, personality: str):

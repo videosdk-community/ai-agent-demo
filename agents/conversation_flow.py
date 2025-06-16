@@ -38,8 +38,7 @@ class MyConversationFlow(ConversationFlow):
             # Perform RAG retrieval for HR policy knowledge
             retrieved_context = await search_hr_policy_knowledge(processed_transcript)
         except Exception as e:
-            meeting_id = self.agent.session.context.get('meetingId', 'UnknownMeeting')
-            print(f"[{meeting_id}] Error during RAG retrieval: {e}")
+            print(f"Error during RAG retrieval: {e}")
             # Optionally, you could inform the user or LLM that context retrieval failed
             # self.agent.chat_context.add_message(
             #     role=ChatRole.SYSTEM, 

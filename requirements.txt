@@ -94,7 +94,6 @@ videosdk-plugins-openai==0.0.7
 vsaiortc==0.0.8
 websockets==15.0.1
 yarl==1.20.1
-PyPDF2
 langchain==0.1.20
 langchain-core==0.1.52
 langchain-openai>=0.0.5
